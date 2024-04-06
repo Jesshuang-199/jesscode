@@ -1,0 +1,98 @@
+---
+title: "Random Forest"
+author: "黄俊棋"
+date: '2023-12-06'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+if(!require(randomForest)) install.packages("randomForest")
+if(!require(pROC)) install.packages("pROC")
+if(!require(caret)) install.packages("caret")
+if(!require(readxl)) install.packages("readxl")
+if(!require(ggplot2)) install.packages("ggplot2")
+library(readxl)
+library(caret)
+library(pROC)
+library(randomForest)
+library(ggplot2)
+train_data<-read_excel("training.xlsx")
+test_data<-read_excel("test.xlsx")
+```
+
+
+
+
+
+```{r}
+#Data Preprocess
+train_data<-data.frame(lapply(train_data, function(x) as.factor(x)))
+
+#Classification
+set.seed(71)
+train.rf<-randomForest(train_data$evalution~., mtry=6, data=train_data,importance=TRUE)
+print(train.rf)
+
+#Cross-validation
+tuneGrid <- expand.grid(mtry = 1:6)
+
+control <- trainControl(method = "cv", number = 10, savePredictions = "final", classProbs = TRUE, summaryFunction = twoClassSummary)
+
+rf_fit <- train(evalution~., data=train_data, method="rf", trControl = control, metric = "ROC",tuneGrid=tuneGrid)
+
+#Model Evaluation
+confusion_Matrix<-confusionMatrix(rf_fit$pred$pred, rf_fit$pred$obs)
+
+precision <- confusion_Matrix$byClass['Precision']
+
+recall <- confusion_Matrix$byClass['Recall']
+
+confusion_Matrix
+
+F1 <- 2 * (precision * recall) / (precision + recall)
+
+print(rf_fit$results)
+```
+
+
+
+```{r}
+#Visualization
+
+roc_curve <- roc(response = rf_fit$pred$obs, predictor = rf_fit$pred$unacc)
+
+plot(roc_curve, main="ROC Curve for RandomForest")
+
+varImpPlot(train.rf)
+
+plot(train.rf)
+
+legend("topright", legend=c("Training Error", "OOB Error", "Standard Deviation of Error"), col=c("black", "red", "green"), lty=1:2)
+
+ggplot(rf_fit)
+```
+
+
+
+
+
+```{r}
+#Predictions
+test_data<-data.frame(lapply(test_data, function(x) as.factor(x)))
+
+pred<-predict(rf_fit, test_data[,-1])
+
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+

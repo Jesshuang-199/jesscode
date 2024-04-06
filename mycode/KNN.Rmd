@@ -1,0 +1,275 @@
+---
+title: "DM project KNN"
+author: "2130005061王厚泽"
+date: "2023-12-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+if(!require(caret)) install.packages("caret")
+if(!require(pROC)) install.packages("pROC")
+library(caret)
+library(pROC)
+
+```
+
+```{r}
+#data Preprocess
+data=read.csv("training.csv",header = T)
+data=data.frame(lapply(data, function(x) as.factor(x)))
+buying=as.numeric(data[,1])
+maint=as.numeric(data[,2])
+doors=data[,3]
+persons=data[,4]
+lug.boot=as.numeric(data[,5])
+safety=as.numeric(data[,6])
+evalution= ifelse(data[,7] == "unacc", 0, 1)
+tdata=data.frame(buying,maint,doors,persons,lug.boot,safety,evalution)
+
+tdata$doors <- as.factor(ifelse(tdata$doors == "5more", 6, as.numeric(tdata$doors)))
+levels(tdata$doors) <- c(levels(tdata$doors), "6")
+
+tdata$persons <- as.factor(ifelse(tdata$persons == "more", 5, as.numeric(tdata$persons)))
+levels(tdata$persons) <- c(levels(tdata$persons), "5")
+```
+
+```{r}
+#KNN function
+euclidean_distance <- function(a, b) sqrt(sum((a - b)^2))
+knn <- function(train_features, train_labels, test_features, K) {
+  predictions <- c()
+  
+  for (i in 1:nrow(test_features)) {
+    distances <- c()
+    
+    for (j in 1:nrow(train_features)) {
+      distances <- c(distances, euclidean_distance(test_features[i,], train_features[j,]))
+    }
+    
+    labels_sorted_by_distance <- train_labels[order(distances)]
+    top_K_labels <- labels_sorted_by_distance[1:K]
+    prediction <- names(which.max(table(top_K_labels)))
+    
+    predictions <- c(predictions, prediction)
+  }
+  
+  return(predictions)
+}
+
+```
+
+
+```{r}
+# When k=3
+tdata <- as.matrix(apply(tdata, 2, as.numeric))
+
+
+k_fold <- 10
+k_value <- 3 
+
+# 初始化性能指标
+accuracy <- numeric(k_fold)
+
+# 十折交叉验证
+for (fold in 1:k_fold) {
+  # 划分训练集和测试集
+  test_indices <- ((fold - 1) * (nrow(tdata) / k_fold) + 1):(fold * (nrow(tdata) / k_fold))
+  test_set <- tdata[test_indices, ]
+  train_set <- tdata[-test_indices, ]
+  
+  # 获取训练集和测试集的特征和标签
+  train_features <- train_set[, 1:6]
+  train_labels <- train_set[, 7]  
+  test_features <- test_set[, 1:6]
+  test_labels <- test_set[, 7]  
+  
+  # 使用上述KNN函数进行预测
+  predictions <- knn(train_features, train_labels, test_features, k_value)
+  
+  
+  # 计算准确率
+  accuracy[fold] <- sum(predictions == test_labels) / length(predictions)
+}
+
+# 打印十折交叉验证的平均准确率
+cat("平均准确率:", mean(accuracy), "\n")
+
+
+```
+
+```{r}
+#when k=5
+library(caret)
+
+
+k_fold <- 10
+k_value <- 5  # 设置K值
+
+
+accuracy <- numeric(k_fold)
+
+output_list <- list()
+test_data_list <- list()
+
+# 十折交叉验证
+for (fold in 1:k_fold) {
+  cat("Iteration:", fold, "\n")
+  # 划分训练集和测试集
+  test_indices <- ((fold - 1) * (nrow(tdata) / k_fold) + 1):(fold * (nrow(tdata) / k_fold))
+  test_set <- tdata[test_indices, ]
+  train_set <- tdata[-test_indices, ]
+  
+  # 获取训练集和测试集的特征和标签
+  train_features <- train_set[, 1:6]
+  train_labels <- train_set[, 7]  
+  test_features <- test_set[, 1:6]
+  test_labels <- test_set[, 7]  
+  
+  # 使用KNN函数进行预测
+  predictions <- knn(train_features, train_labels, test_features, k_value)
+  cat(predictions," ")
+  
+  output_list[[fold]] <- predictions
+  
+  test_data_list[[fold]] <- test_labels
+  
+  
+  accuracy[fold] <- sum(predictions == test_labels) / length(predictions)
+}
+
+# 打印十折交叉验证的平均准确率
+cat("平均准确率:", mean(accuracy), "\n")
+
+# 保存输出列表到文件（以RDS格式保存）
+saveRDS(output_list, "output_list.rds")
+# 保存测试数据列表到文件（以RDS格式保存）
+saveRDS(test_data_list, "test_data_list.rds")
+
+```
+
+```{r}
+#Model Evaluation
+library(caret)
+
+# 合并所有的预测和真实标签
+all_predictions <- unlist(output_list)
+all_targets <- unlist(test_data_list)
+
+# 将预测和真实标签转换为因子
+#all_predictions <- factor(all_predictions)
+all_targets <- factor(all_targets)
+
+all_predictions <- factor(all_predictions, levels = levels(all_targets))
+
+# 创建混淆矩阵
+confusion_Matrix <- confusionMatrix(all_predictions, all_targets)
+
+print(confusion_Matrix)
+```
+
+```{r}
+#ROC curve
+
+library(pROC)
+
+
+output_list <- readRDS("output_list.rds")
+test_data_list <- readRDS("test_data_list.rds")
+
+
+roc_curves <- list()
+
+
+for (fold in 1:k_fold) {
+ 
+  predicted_probs <- ifelse(output_list[[fold]] == 1, 1, 0)
+  
+
+  roc_curve <- roc(test_data_list[[fold]], predicted_probs)
+  
+  
+  roc_curves[[fold]] <- roc_curve
+}
+
+
+plot(roc_curves[[1]], col = "blue", main = "ROC Curves for Different Folds", lwd = 2)
+for (fold in 2:k_fold) {
+  lines(roc_curves[[fold]], col = rainbow(k_fold)[fold], lwd = 2)
+}
+
+legend("bottomright", legend = paste("Fold", 1:k_fold), col = rainbow(k_fold), lty = 1, cex = 0.8)
+
+```
+
+
+```{r}
+
+library(pROC)
+library(dplyr)
+
+output_list <- readRDS("output_list.rds")
+test_data_list <- readRDS("test_data_list.rds")
+
+
+k_values <- c(1, 3, 5, 7, 9)
+
+
+roc_curves_list <- vector("list", length = length(k_values))
+
+for (i in seq_along(k_values)) {
+  k <- k_values[i]
+  cat("Processing k =", k, "\n")
+  roc_curves <- list()
+  
+  
+  for (fold in 1:k_fold) {
+    
+    predicted_probs <- ifelse(output_list[[fold]] == 1, 1, 0)
+    
+    roc_curve <- roc(test_data_list[[fold]], predicted_probs)
+    
+    roc_curves[[fold]] <- roc_curve
+  }
+  
+  
+  roc_curves_list[[i]] <- roc_curves
+}
+
+
+plot(roc_curves_list[[1]][[1]], col = "blue", main = "ROC Curves for Different k Values", lwd = 2)
+
+for (i in seq_along(k_values)) {
+  k <- k_values[i]
+  
+  for (fold in 2:k_fold) {
+    lines(roc_curves_list[[i]][[fold]], col = rainbow(k_fold)[fold], lwd = 2)
+  }
+}
+
+
+legend("bottomright", legend = paste("k =", k_values), col = rainbow(length(k_values)), lty = 1, cex = 0.8)
+
+```
+
+
+
+
+
+
+
+
+
+

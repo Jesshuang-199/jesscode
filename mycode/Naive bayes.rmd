@@ -1,0 +1,128 @@
+
+```{r}
+#安装需要的包
+if(!require (caret))install.packages("caret")
+if(!require (readxl))install.packages("readxl")
+if(!require (pROC))install.packages("pROC")
+
+# 定义Naïve Bayes分类函数
+library(caret)
+library(readxl)
+library(pROC)
+
+#读取数据，命名data1
+data1 <- read.csv("training.csv",header=T)
+```
+
+
+```{r}
+# 定义Naïve Bayes分类函数
+naive_bayes <- function(testdata, training_data) {
+  predicted_evaluation <- character(nrow(testdata))  # 存储预测评价
+  incorrect_predictions <- numeric(nrow(testdata))  # 记录错误预测数
+
+  for (i in 1:nrow(testdata)) {
+    # 计算先验概率
+    prior_prob_acc <- sum(training_data$evalution == "acc") / nrow(training_data)
+    prior_prob_unacc <- sum(training_data$evalution == "unacc") / nrow(training_data)
+
+    # 计算条件概率
+    # 对每个特征进行条件概率计算
+    cond_prob_acc_buying <- sum(training_data$evalution == "acc" & training_data$buying == testdata[i, ]$buying) / sum(training_data$evalution == "acc")
+    cond_prob_acc_maint <- sum(training_data$evalution == "acc" & training_data$maint == testdata[i, ]$maint) / sum(training_data$evalution == "acc")
+    cond_prob_acc_doors <- sum(training_data$evalution == "acc" & training_data$doors == testdata[i, ]$doors) / sum(training_data$evalution == "acc")
+    cond_prob_acc_persons <- sum(training_data$evalution == "acc" & training_data$persons == testdata[i, ]$persons) / sum(training_data$evalution == "acc")
+    cond_prob_acc_lug.boot <- sum(training_data$evalution == "acc" & training_data$lug.boot == testdata[i, ]$lug.boot) / sum(training_data$evalution == "acc")
+    cond_prob_acc_safety <- sum(training_data$evalution == "acc" & training_data$safety == testdata[i, ]$safety) / sum(training_data$evalution == "acc")
+
+    cond_prob_unacc_buying <- sum(training_data$evalution == "unacc" & training_data$buying == testdata[i, ]$buying) / sum(training_data$evalution == "unacc")
+    cond_prob_unacc_maint <- sum(training_data$evalution == "unacc" & training_data$maint == testdata[i, ]$maint) / sum(training_data$evalution == "unacc")
+    cond_prob_unacc_doors <- sum(training_data$evalution == "unacc" & training_data$doors == testdata[i, ]$doors) / sum(training_data$evalution == "unacc")
+    cond_prob_unacc_persons <- sum(training_data$evalution == "unacc" & training_data$persons == testdata[i, ]$persons) / sum(training_data$evalution == "unacc")
+    cond_prob_unacc_lug.boot <- sum(training_data$evalution == "unacc" & training_data$lug.boot == testdata[i, ]$lug.boot) / sum(training_data$evalution == "unacc")
+    cond_prob_unacc_safety <- sum(training_data$evalution == "unacc" & training_data$safety == testdata[i, ]$safety) / sum(training_data$evalution == "unacc")
+
+    # 计算后验概率
+    posterior_prob_acc <- prior_prob_acc * cond_prob_acc_buying * cond_prob_acc_maint * cond_prob_acc_doors * cond_prob_acc_persons * cond_prob_acc_lug.boot * cond_prob_acc_safety
+    posterior_prob_unacc <- prior_prob_unacc * cond_prob_unacc_buying * cond_prob_unacc_maint * cond_prob_unacc_doors * cond_prob_unacc_persons * cond_prob_unacc_lug.boot * cond_prob_unacc_safety
+
+    # 分类
+    if (posterior_prob_acc > posterior_prob_unacc) {
+      predicted_evaluation[i] <- "acc"
+    } else {
+      predicted_evaluation[i] <- "unacc"
+    }
+    
+    # 记录错误预测
+    if (predicted_evaluation[i] != testdata[i, 7]) {
+      incorrect_predictions[i] <- 1
+    } else {
+      incorrect_predictions[i] <- 0
+    }
+  }
+
+  true_labels <- factor(testdata[, 7], levels = c("unacc", "acc"))  # Convert to factor with the same levels
+
+  error_rate <- sum(incorrect_predictions) / nrow(testdata)
+  roc_curve <- roc(as.numeric(true_labels == "acc"), as.numeric(predicted_evaluation == "acc"))
+
+  return(list("error_rate" = error_rate, 
+              "predicted_evaluation" = predicted_evaluation,
+              "roc_curve" = roc_curve))
+}
+
+# 10-fold交叉验证
+set.seed(123)  # 设置随机种子以确保结果的可重复性
+fold_indices <- sample(1:10, nrow(data1), replace = TRUE)  # 随机分配样本到10个折叠
+
+error_rates <- numeric(10)  # 存储每个折叠的错误率
+roc_curves <- list()  # 存储每个折叠的ROC曲线
+
+all_true_labels <- numeric()  # 存储所有真实标签
+all_predicted_labels <- numeric()  # 存储所有预测标签
+
+for (fold in 1:10) {
+  test_indices <- which(fold_indices == fold)
+  train_indices <- which(fold_indices != fold)
+
+  test_data <- data1[test_indices, ]
+  train_data <- data1[train_indices, ]
+
+  result <- naive_bayes(test_data, train_data)
+  error_rates[fold] <- result$error_rate
+  roc_curves[[fold]] <- result$roc_curve
+
+  # 输出预测结果
+  cat("Fold", fold, "Predictions:", result$predicted_evaluation, "\n")
+  
+  all_true_labels <- c(all_true_labels, as.numeric(test_data[, 7] == "acc"))
+  all_predicted_labels <- c(all_predicted_labels, as.numeric(result$predicted_evaluation == "acc"))
+}
+
+# 计算总体混淆矩阵
+confusion_matrix <- confusionMatrix(factor(all_predicted_labels, levels = c(0, 1)),
+                factor(all_true_labels, levels = c(0, 1)))
+print(confusion_matrix)
+
+
+average_error_rate <- mean(error_rates)
+print(paste("Average Error Rate:", average_error_rate))
+
+# 画出所有折叠的ROC曲线
+plot(1 - roc_curves[[1]]$specificities, roc_curves[[1]]$sensitivities, type = "l",
+     col = "blue", main = "ROC Curves for Folds", lwd = 2, 
+     xlim = c(1, 0), ylim = c(0, 1), xlab = "False Positive Rate", ylab = "True Positive Rate")
+
+for (fold in 2:10) {
+  lines(1 - roc_curves[[fold]]$specificities, roc_curves[[fold]]$sensitivities, col = rainbow(10)[fold], lwd = 2)
+}
+
+# 添加图例
+legend("left", legend = paste("Fold", 1:10), col = rainbow(10), lwd = 2)
+
+
+```
+
+
+
+

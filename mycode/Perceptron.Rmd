@@ -1,0 +1,260 @@
+---
+title: "DM project"
+author: "2130005061王厚泽"
+date: "2023-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+if(!require(caret)) install.packages("caret")
+if(!require(pROC)) install.packages("pROC")
+if(!require(pROC)) install.packages("class")
+library(caret)
+library(pROC)
+library(class)
+```
+
+
+```{r}
+#data Preprocess
+data=read.csv("training.csv",header = T)
+data=data.frame(lapply(data, function(x) as.factor(x)))
+buying=as.numeric(data[,1])
+maint=as.numeric(data[,2])
+doors=data[,3]
+persons=data[,4]
+lug.boot=as.numeric(data[,5])
+safety=as.numeric(data[,6])
+evalution= ifelse(data[,7] == "unacc", 0, 1)
+tdata=data.frame(buying,maint,doors,persons,lug.boot,safety,evalution)
+
+levels(tdata$doors) <- c(levels(tdata$doors), "6")
+tdata$doors[tdata$doors == "5more"] = 6
+
+levels(tdata$persons) <- c(levels(tdata$persons), "5")
+tdata$persons[tdata$persons == "more"] = 5
+
+
+```
+
+```{r}
+#single neuron model
+
+update_weights=function(weights,eta,error,inputs){
+  
+    weights= weights + eta*error*inputs
+    
+
+  return(weights)
+}
+
+sigmoid <- function(x) {
+  1 / (1 + exp(-x))
+}
+```
+
+
+```{r}
+set.seed(123)  
+train_perceptron <- function(tdata, epochs = 100, eta = 0.3) {
+  # 初始化权重，使用感知器的初始权重
+   weights = rep(0, ncol(tdata) - 1)
+   
+  for (epoch in 1:epochs) {
+    for (row in 1:nrow(tdata)) {
+      inputs <- as.numeric(tdata[row, 1:(ncol(tdata) - 1)])
+      #cat(inputs," ")
+      target <- as.numeric(tdata[row, ncol(tdata)])
+      #cat(target," ")
+      # 计算预测值
+      weighted_sum = sum(inputs*weights)
+      #cat(weighted_sum," ")
+      
+      output1 <- sigmoid(weighted_sum)
+      #cat(output1," ")
+      
+      # 更新权重
+      error <- tdata[row,7] - output1
+      #cat(error," ")
+      
+      weights <- update_weights(weights,eta,error,inputs)
+      
+    }
+  }
+  
+  return(weights)
+}
+
+
+tdata[, 1:(ncol(tdata) - 1)] = sapply(tdata[, 1:(ncol(tdata) - 1)], as.numeric)
+
+
+# 调用训练函数
+trained_weights <- train_perceptron(tdata)
+trained_weights
+```
+
+```{r}
+set.seed(123)
+
+# 初始化
+num_folds <- 10
+folds <- vector("list", length = num_folds)
+fold_size <- nrow(tdata) %/% num_folds
+remaining_indices <- 1:nrow(tdata)
+
+for (i in 1:num_folds) {
+  if (i == num_folds) {
+    fold_indices <- remaining_indices
+  } else {
+    fold_indices <- sample(remaining_indices, size = fold_size)
+  }
+  
+  folds[[i]] <- fold_indices
+  remaining_indices <- setdiff(remaining_indices, fold_indices)
+}
+
+output_list <- list()
+test_data_list <- list()
+#weighted_sum_list <- vector("list", length = num_folds)
+
+# 进行十折交叉验证
+performance <- numeric(num_folds)
+
+for (i in 1:num_folds) {
+  cat("Iteration:", i, "\n")
+  test_indices <- folds[[i]]
+  train_indices <- setdiff(1:nrow(tdata), test_indices)
+  
+  test_data <- tdata[test_indices, ]
+  train_data <- tdata[train_indices, ]
+  
+  # 训练感知器模型
+  trained_weights <- train_perceptron(train_data)
+  
+  # 在测试集上进行预测
+  predictions <- apply(test_data[, 1:(ncol(test_data) - 1)], 1, function(inputs) {
+    weighted_sum = sum(inputs * trained_weights)
+    #cat(weighted_sum," ")
+    
+    output = ifelse(sigmoid(weighted_sum) > 0.5, 1, 0)
+  
+    return(output)
+  })
+  
+  # 保存输出到列表中
+  output_list[[i]] <- predictions
+  # 保存测试数据到列表中
+  test_data_list[[i]] <- test_data
+  
+  
+  # 将性能指标存储起来
+  performance[i] <- accuracy <- sum(predictions == test_data[, ncol(test_data)]) / length(predictions)
+
+}
+
+# 计算平均性能
+average_performance <- mean(performance)
+cat("Average Performance:", average_performance, "\n")
+
+
+# 保存输出列表到文件（以RDS格式保存）
+saveRDS(output_list, "output_list.rds")
+# 保存测试数据列表到文件（以RDS格式保存）
+saveRDS(test_data_list, "test_data_list.rds")
+
+```
+
+
+
+```{r}
+#Model Evaluation
+library(caret)
+# 合并所有的预测和真实标签
+all_predictions <- unlist(output_list)
+all_targets <- unlist(lapply(test_data_list, function(tdata) tdata[, ncol(tdata)]))
+
+# 将预测和真实标签转换为因子
+#all_predictions <- factor(all_predictions)
+all_targets <- factor(all_targets)
+
+all_predictions <- factor(all_predictions, levels = levels(all_targets))
+
+# 创建混淆矩阵
+confusion_Matrix <- confusionMatrix(all_predictions, all_targets)
+
+# 打印混淆矩阵
+print(confusion_Matrix)
+
+```
+
+```{r}
+# 初始化
+library(pROC)
+roc_list <- list()
+preprop <- list()
+
+for (i in 1:num_folds) {
+  cat("Iteration:", i, "\n")
+  test_indices <- folds[[i]]
+  train_indices <- setdiff(1:nrow(tdata), test_indices)
+  
+  test_data <- tdata[test_indices, ]
+  train_data <- tdata[train_indices, ]
+  
+  # 训练感知器模型
+  trained_weights <- train_perceptron(train_data)
+  
+  # 在测试集上进行预测
+  predictions <- apply(test_data[, 1:(ncol(test_data) - 1)], 1, function(inputs) {
+    weighted_sum = sum(inputs * trained_weights)
+    #cat(weighted_sum," ")
+  
+    probability = sigmoid(weighted_sum)
+  
+    return(probability)
+  })
+  
+  # 保存预测概率
+  preprop[[i]] <- predictions
+  
+  # 创建 ROC 曲线
+  #roc_data <- roc(test_data[, ncol(test_data)], predictions)
+  #roc_list[[i]] <- roc_data
+}
+# 合并预测概率
+combined_predictions <- unlist(preprop)
+
+# 创建 ROC 曲线
+roc_data <- roc(tdata[, ncol(tdata)], combined_predictions)
+roc_list[[1]] <- roc_data
+
+# 将 ROC 曲线绘制在同一图上
+plot(roc_list[[1]], col = "red", main = "ROC Curve", lty = 1, lwd = 2, xlim = c(0, 1), ylim = c(0, 1))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
