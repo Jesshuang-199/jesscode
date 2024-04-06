@@ -1,0 +1,398 @@
+---
+title: "SC_project Experimental Result2"
+author: "黄俊棋"
+date: '2023-12-13'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+```{r}
+if(!require (binom)) install.packages("binom")
+library(binom)
+```
+
+```{r}
+simulate_coverage <- function(n, p, method) {
+  m <- 1000 # 模拟次数
+  coverage_count <- 0
+
+  for (i in 1:m) {
+    x <- rbinom(1, n, p)
+    ci <- binom.confint(x, n, conf.level = 0.95, methods = method)
+    if (p >= ci$lower & p <= ci$upper) {
+      coverage_count <- coverage_count + 1
+    }
+  }
+
+  return(coverage_count / m)  # 返回覆盖率
+}
+
+n <- c(5,10,15,20,25)  # 样本数量
+p_values <- seq(0.001,0.999 ,length.out=30)# p的取值
+methods <- c("exact", "wilson", "agresti-coull","asymptotic")
+
+
+
+for(k in 1:length(n)){
+
+coverage_rates <- matrix(NA, nrow = length(p_values), ncol = length(methods))
+
+for (i in 1:length(p_values)) {
+  for (j in 1:length(methods)) {
+    coverage_rates[i, j] <- simulate_coverage(n[k], p_values[i], methods[j])
+  }
+}
+colnames(coverage_rates) <- methods
+c<-c("black","red","blue","dark green")
+
+plot(p_values, coverage_rates[,1], type = "l", lty = 1,lwd=2, col = "black", ylim = c(0.8, 1), xlab = "Probability p", ylab = "Coverage Rate", main = paste("n = ",n[k]))
+for (i in 2:ncol(coverage_rates)) {
+  lines(p_values, coverage_rates[,i], type = "l", col = c[i],lwd=2)
+}
+abline(h=0.95,col="black",lty=2,lwd=2)
+legend("bottomright", legend = c("Exact", "Score", "adWald","Wald"), col = c,lty=1)
+
+}
+
+
+
+```
+
+
+
+
+```{r}
+simulate_interval_width <- function(n, p, method) {
+  m<-1000
+  M<-rep(0,m)
+  for(i in 1 : m){
+  x <- rbinom(1, n, p)
+  ci <- binom.confint(x, n, conf.level = 0.95, methods = method)
+  M[i]<-ci$upper - ci$lower
+  }
+  return(mean(M))
+}
+
+n_values <- 5:25  #样本数量
+p_fixed <- c(0.001,0.002,0.01,0.1,0.2,0.5)
+methods <- c("exact", "wilson","agresti-coull")
+
+
+
+for(p in p_fixed){
+  interval_widths <- matrix(NA, nrow = length(n_values), ncol = length(methods))
+
+  for (i in 1:length(n_values)) {
+    for (j in 1:length(methods)) {
+      interval_widths[i, j] <- simulate_interval_width(n_values[i], p, methods[j])
+    }
+  }
+
+  colnames(interval_widths) <- methods
+  c<-c("black","red","blue")
+  
+  # if(p==p_fixed[1]){
+  #   png("wid_p1.png", width = 800, height = 600, res = 150)
+  # }
+  # else if (p==p_fixed[2]){
+  #   png("wid_p2.png", width = 800, height = 600, res = 150)
+  # }
+  # else if (p==p_fixed[3]){
+  #   png("wid_p3.png", width = 800, height = 600, res = 150)
+  # }
+  # else if (p==p_fixed[4]){
+  #   png("wid_p4.png", width = 800, height = 600, res = 150)
+  # }
+  # else{
+  #   png("wid_p5.png", width = 800, height = 600, res = 150)
+  # }
+
+  plot(n_values, interval_widths[,1], type = "l",ylim=c(0,1), lwd=2 ,lty = 1, col = "black", xlab = "Sample Size n", ylab = "Interval Width", main = paste("p = ", p))
+  for (i in 2:ncol(interval_widths)) {
+    lines(n_values, interval_widths[,i], type = "l", col =c[i], lwd=2)
+  }
+  legend("topright", legend = c("Exact", "Score", "adWald"), col = c, lty = 1, lwd = 2)
+  
+  # dev.off()
+}
+
+
+
+```
+
+
+
+
+
+
+```{r}
+simulate_interval_width <- function(n, p, method) {
+  m <- 300
+  M <- rep(0, m)
+  for (i in 1:m) {
+    x <- rbinom(1, n, p)
+    ci <- binom.confint(x, n, conf.level = 0.95, methods = method)
+    M[i] <- ci$upper - ci$lower
+  }
+  return(mean(M))
+}
+
+n_fixed <-25# 固定样本数量
+p_values <- seq(0.001, 0.1, length.out = 20)  # 概率p的范围
+methods <- c("exact", "wilson", "agresti-coull")
+
+interval_widths <- array(dim = c(length(p_values), length(methods)))
+
+for (j in 1:length(methods)) {
+  for (i in 1:length(p_values)) {
+    interval_widths[i, j] <- simulate_interval_width(n_fixed, p_values[i], methods[j])
+  }
+}
+
+colnames(interval_widths) <- methods
+colors <- c("black", "red", "blue")
+
+plot(p_values, interval_widths[, 1], type = "l", ylim = c(0, 0.8), lwd = 2, lty = 1, col = "black", xlab = "Probability p", ylab = "Interval Width", main = paste("n = ", n_fixed))
+for (i in 2:ncol(interval_widths)) {
+  lines(p_values, interval_widths[, i], type = "l", col = colors[i], lwd = 2)
+}
+legend("bottomright", legend = c("Exact","Score","adWald"), col = colors, lty = 1, lwd = 2)
+
+
+
+
+```
+
+
+
+
+
+```{r}
+exact<-function(p){
+n_values <- 5:25
+m <- 100
+
+# 存储结果的向量
+coverage_rates <- numeric(length(n_values))
+interval_widths <- numeric(length(n_values))
+
+# 对每个n进行模拟
+for (n_idx in 1:length(n_values)) {
+  n <- n_values[n_idx]
+  coverage_count <- 0
+  total_width <- 0
+
+  for (i in 1:m) {
+    x <- rbinom(1, n, p)
+    ci <- binom.confint(x, n, conf.level = 0.95, methods = "exact")
+    LCL <- ci$lower
+    UCL <- ci$upper
+
+    # 检查p是否在置信区间内
+    if (p >= LCL && p <= UCL) {
+      coverage_count <- coverage_count + 1
+    }
+    total_width <- total_width + (UCL - LCL)
+  }
+
+  coverage_rate <- coverage_count / m
+  avg_width <- total_width / m
+
+  coverage_rates[n_idx] <- coverage_rate
+  interval_widths[n_idx] <- avg_width
+}
+
+# 绘制结果
+plot(n_values, coverage_rates, type = "n",
+     xlab = "Sample Size (n)", ylab = "Coverage Rate",xaxt="n", ylim = c(0.8, 1),lwd=2,main = paste("p = ",p))
+axis(1, at = c(5, 10, 15, 20, 25))
+lines(n_values, coverage_rates, col = "black",lwd=2)
+# legend("topright", legend = c("Coverage Rate", "Interval Width"),
+#        col = c("blue", "red"), lty = 1)
+
+}
+
+
+
+```
+
+
+
+```{r}
+score<-function(p){
+ #alter n
+score_Test<-function(n,p){
+pos=sample(0:1,n,prob=c(1-p,p),replace=T)
+output=sum(pos==1)
+p1 = output/n
+z_alpha=qnorm(0.975)
+a1=p1+(z_alpha)^2/(2*n)
+a2=z_alpha*sqrt((p1*(1-p1)/n)+(z_alpha)^2/(4*(n^2)))
+b2=(1+(z_alpha)^2/n)
+result_lcl=(a1-a2)/b2#Lower limit
+result_ucl=(a1+a2)/b2#Upper limit
+length1=result_ucl-result_lcl#Length
+return(c(result_lcl,result_ucl,length1))
+}
+
+# result1<-matrix(0,nrow=1000,ncol=200)
+# length1<-matrix(0,nrow=1000,ncol=200)
+cover<-function(n,p){# function to calculate coverage
+output2<-0
+length2=rep(0,1000)
+for (i in 1:1000){
+  u=score_Test(n,p)
+  if(p>u[1] && p<u[2]){
+    output2=output2+1
+    length2[i]=u[3]
+    }
+}
+length=mean(length2)
+return(c(output2/1000,length))
+}
+n<-seq(5,25,1)
+coverage<-numeric(length(n))
+for (j in 1:length(n)) {
+ 
+  coverage[j]=cover(j+4,p)[1]
+  
+}
+# plot(0, 1, type = "n",
+#      xlab = "Sample Size (n)", ylab = "Coverage Rate",xaxt="n", ylim = c(0, 1),lwd=2,main = paste("p = ",p))
+# axis(1, at = c(5, 10, 15, 20, 25))
+lines(n,coverage,col="red",lwd=2)
+# result2=apply(result1,1,mean)
+
+
+#alter p
+# result3<-matrix(0,nrow=100,ncol=200)
+
+# for (j in 1:100) {
+#   result3[j,1:200]=cover(20,j/100)
+# }
+# result4=apply(result3,1,mean)
+}
+
+
+
+
+```
+
+
+```{r}
+adwald<-function(p){
+  n <- seq(5,25,by = 1)
+  cl <- 0.95
+  M <- 100#模拟次数
+  coverage <- numeric(length(n))
+  s2 <- numeric(M)
+  for (i in 5:25) {
+    #Monte Carlo模拟求覆盖率
+    for (j in 1:M) {
+      x <- rbinom(1, i, p)
+      z <- qnorm(1-(1-cl)/2)
+      n_adj <- i+ round(z^2,0)
+      x_adj <- x+ round(z,0)
+      ph_adj <- x_adj/n_adj
+      se_adj <- sqrt(ph_adj * (1 - ph_adj) / n_adj)
+      adj_ci <- c(ph_adj - z * se_adj, ph_adj + z * se_adj)
+      if(p >= adj_ci[1] & p <= adj_ci[2]){
+        s2[j] <- 1
+      }
+      else{s2[j] <- 0}
+    }
+    k <- i-4
+    coverage[k] <- round(sum(s2)/M,4)
+  }
+  #作图
+  # plot(n, coverage, xlab = "Sample_size(n)", ylab = "Coverage_rate", main = paste("p = ",p),ylim = c(0.9,1),"l")
+  # abline(h = 0.95,col = "red")
+  lines(n,coverage,col="blue",lwd=2)
+  
+}
+
+
+
+
+```
+
+
+```{r}
+wald <- function(p){
+  n <- seq(5,25,by = 1)
+  cl <- 0.95
+  M <- 100#模拟次数
+  coverage <- numeric(length(n))
+  s1 <- numeric(M)
+  for (i in 5:25) {
+    #Monte Carlo模拟求覆盖率
+    for (j in 1:M) {
+      x <- rbinom(1, i, p)
+      ph <- x/i
+      se <- sqrt(ph*(1 - ph)/i)
+      ci <- c(ph-qnorm(1-(1-cl)/2)*se, ph+qnorm(1-(1-cl)/2)*se)
+      if(p >= ci[1] & p <= ci[2]){
+          s1[j] <- 1
+        }
+        else{s1[j] <- 0}
+    }
+    k <- i-4
+    coverage[k] <- round(sum(s1)/M,4)
+  }
+  #作图
+  # plot(n, coverage, xlab = "Sample_size(n)", ylab = "Coverage_rate", main = paste("p = ",p),ylim = c(0,1), "l")
+  # abline(h = 0.95,col = "red")
+  lines(n,coverage,col="dark green",lwd=2)
+}
+
+
+
+
+```
+
+
+
+```{r}
+# png("all_p1.png", width = 800, height = 600, res = 150)
+p<-c(0.001,0.003,0.01,0.02,0.03,0.04)
+for(l in 1:length(p)){
+  exact(p[l])
+  par(new = TRUE)
+  score(p[l])
+  par(new = TRUE)
+  adwald(p[l])
+  par(new = TRUE)
+  # wald(p[l])
+  # par(new = TRUE)
+  abline(h=0.95,lty=2,col="black",lwd=2)
+  par(new = TRUE)
+  legend("bottomright",legend = c("Exact","Score","adWald"),col = c("black","red","blue"),lty=1,cex=1)
+}
+
+
+
+# dev.off()
+
+
+
+```
+
+
+
+```{r}
+
+
+
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
